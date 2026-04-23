@@ -1,0 +1,22 @@
+# COMANDOS DE DESARROLLO - ISV TOOLKIT PRO (Matias iOne)
+
+### ATAJOS RÁPIDOS (RECOMENDADO):
+- F5 en VS Code (Ya configurado en .vscode/launch.json)
+- Doble clic en 'run_debug.bat' (Para probar rápido)
+- Doble clic en 'build_release.bat' (Para compilar y ver el .exe)
+
+1. EJECUTAR (DEBUG):
+"C:\Users\Matias iOne\Documents\flutter\flutter\bin\flutter.bat" run -d windows
+
+2. COMPILAR (RELEASE .EXE):
+"C:\Users\Matias iOne\Documents\flutter\flutter\bin\flutter.bat" build windows --release
+
+3. ARREGLAR AVISO SEGURIDAD (SOLO ESTA PC):
+powershell -Command "Unblock-File -Path build\windows\x64\runner\Release\isv_toolkit.exe"
+
+4. ABRIR CARPETA DEL EXE:
+explorer build\windows\x64\runner\Release
+
+5. CREAR INSTALADOR PROFESIONAL (.MSIX):
+"C:\Users\Matias iOne\Documents\flutter\flutter\bin\flutter.bat" pub get
+"C:\Users\Matias iOne\Documents\flutter\flutter\bin\flutter.bat" pub run msix:create
