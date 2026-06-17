@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import 'core/preferences_service.dart';
 import 'core/localization.dart';
 import 'pages/dashboard_page.dart';
 
+const String appVersion = '1.0.4';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+  await windowManager.setMinimumSize(const Size(1280, 720));
   final prefs = await PreferencesService.load();
   runApp(ISVToolkitApp(prefs: prefs));
 }
@@ -66,19 +71,21 @@ class _ISVToolkitAppState extends State<ISVToolkitApp> {
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF121212), // Anthracite
+        scaffoldBackgroundColor: const Color(0xFF0F172A), // Deep Slate Navy
         colorScheme: ColorScheme.dark(
           primary: Colors.cyanAccent,
           secondary: Colors.blueAccent,
-          surface: const Color(0xFF1E1E1E), // Slightly lighter surface
+          surface: const Color(0xFF1E293B), // Elevated Slate
           onSurface: Colors.white,
           onPrimary: Colors.black,
-          surfaceContainerHighest: const Color(0xFF2C2C2C),
+          surfaceContainerHighest: const Color(0xFF334155), // Slate border
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF1E1E1E),
+          color: const Color(0xFF1E293B),
           elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
         ),
         useMaterial3: true,
       ),
@@ -94,7 +101,7 @@ class _ISVToolkitAppState extends State<ISVToolkitApp> {
   }
 }
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   final bool isDarkMode;
   final String currentLang;
   const SplashScreen({
@@ -104,86 +111,153 @@ class SplashScreen extends StatelessWidget {
   });
 
   @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  int _messageIndex = 0;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    final loc = AppLocale.get(widget.currentLang);
+    _timer = Timer.periodic(const Duration(milliseconds: 800), (timer) {
+      if (mounted) {
+        setState(() {
+          _messageIndex = (timer.tick) % loc.splashMessages.length;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final loc = AppLocale.get(currentLang);
-    final bgColor = isDarkMode
-        ? const Color(0xFF0F0F0F)
+    final loc = AppLocale.get(widget.currentLang);
+    final bgColor = widget.isDarkMode
+        ? const Color(0xFF0F172A)
         : const Color(0xFFF4F9FF);
-    final accentColor = isDarkMode ? Colors.cyanAccent : Colors.blueAccent;
+    final accentColor = widget.isDarkMode
+        ? Colors.cyanAccent
+        : Colors.blueAccent;
 
     return Scaffold(
       backgroundColor: bgColor,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Logo Container
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: accentColor.withValues(alpha: 0.1),
-                boxShadow: [
-                  BoxShadow(
-                    color: accentColor.withValues(alpha: 0.2),
-                    blurRadius: 40,
-                    spreadRadius: 5,
+      body: Stack(
+        children: [
+          Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Logo Container
+                Container(
+                  width: 130,
+                  height: 130,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: accentColor.withValues(alpha: 0.05),
+                    boxShadow: [
+                      BoxShadow(
+                        color: accentColor.withValues(alpha: 0.15),
+                        blurRadius: 40,
+                        spreadRadius: 2,
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(25),
-                child: Image.asset('assets/logo.png', fit: BoxFit.contain),
-              ),
-            ),
-            const SizedBox(height: 48),
-            // Title
-            Text(
-              'ISV TOOLKIT',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 4,
-                color: isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              loc.analysisInitialDesc,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w500,
-                letterSpacing: 2,
-                color: accentColor,
-              ),
-            ),
-            const SizedBox(height: 60),
-            // Loading Indicator
-            SizedBox(
-              width: 200,
-              child: Column(
-                children: [
-                  LinearProgressIndicator(
-                    backgroundColor: accentColor.withValues(alpha: 0.1),
-                    valueColor: AlwaysStoppedAnimation<Color>(accentColor),
-                    borderRadius: BorderRadius.circular(10),
-                    minHeight: 4,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    loc.splashLoading.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                      color: isDarkMode ? Colors.white38 : Colors.black38,
+                  child: Padding(
+                    padding: const EdgeInsets.all(28),
+                    child: Hero(
+                      tag: 'app_logo',
+                      child: Image.asset(
+                        'assets/logo.png',
+                        fit: BoxFit.contain,
+                      ),
                     ),
                   ),
-                ],
+                ),
+                const SizedBox(height: 48),
+                // Title
+                Text(
+                  'ISV TOOLKIT',
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 6,
+                    color: widget.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  loc.appTitle.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 3,
+                    color: accentColor.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 70),
+                // Loading Indicator & Dynamic Text
+                SizedBox(
+                  width: 240,
+                  child: Column(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          backgroundColor: accentColor.withValues(alpha: 0.1),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            accentColor,
+                          ),
+                          minHeight: 3,
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 300),
+                        child: Text(
+                          loc.splashMessages[_messageIndex],
+                          key: ValueKey<int>(_messageIndex),
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            fontStyle: FontStyle.italic,
+                            color: widget.isDarkMode
+                                ? Colors.white54
+                                : Colors.black45,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Version at bottom
+          Positioned(
+            bottom: 30,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Text(
+                'v$appVersion | 2026 iOnetech',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                  color: widget.isDarkMode ? Colors.white12 : Colors.black12,
+                ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

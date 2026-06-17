@@ -16,6 +16,7 @@ class SDKService {
   // Connection tracking
   final ValueNotifier<String> adbStatusNotifier = ValueNotifier("Disconnected");
   String? currentSerial;
+  final ValueNotifier<List<String>> connectedDevices = ValueNotifier([]);
   final ValueNotifier<int> refreshTick = ValueNotifier(0);
 
   SDKService() {
@@ -43,13 +44,20 @@ class SDKService {
       final String bundledBin = p.join(appDir, 'bin');
 
       if (Directory(bundledBin).existsSync()) {
-        final adb = p.join(bundledBin, 'adb.exe');
-        if (File(adb).existsSync()) adbPath = adb;
+        // 1. Detect ADB (Platform Tools)
+        final adbDirect = p.join(bundledBin, 'adb.exe');
+        final adbInFolder = p.join(bundledBin, 'platform-tools', 'adb.exe');
 
-        final aapt = p.join(bundledBin, 'aapt.exe');
-        if (File(aapt).existsSync()) aaptPath = aapt;
+        if (File(adbInFolder).existsSync()) {
+          adbPath = adbInFolder;
+        } else if (File(adbDirect).existsSync()) {
+          adbPath = adbDirect;
+        }
 
-        // For apksigner, we might bundle the jar or the bat
+        // 2. Detect AAPT/Apksigner (Build Tools)
+        final aaptDirect = p.join(bundledBin, 'aapt.exe');
+        if (File(aaptDirect).existsSync()) aaptPath = aaptDirect;
+
         final apksignerBat = p.join(bundledBin, 'apksigner.bat');
         if (File(apksignerBat).existsSync()) {
           apksignerPath = apksignerBat;
@@ -58,11 +66,22 @@ class SDKService {
           if (File(apksignerJar).existsSync()) apksignerPath = apksignerJar;
         }
 
-        final kt = p.join(bundledBin, 'keytool.exe');
-        if (File(kt).existsSync()) keytoolPath = kt;
+        // 3. Detect Java (JDK)
+        // Check for bundled JDK folder first
+        final bundledJdkBin = p.join(bundledBin, 'jdk', 'bin');
+        final kt = p.join(bundledJdkBin, 'keytool.exe');
+        final js = p.join(bundledJdkBin, 'jarsigner.exe');
 
-        final js = p.join(bundledBin, 'jarsigner.exe');
-        if (File(js).existsSync()) jarsignerPath = js;
+        if (File(kt).existsSync() && File(js).existsSync()) {
+          keytoolPath = kt;
+          jarsignerPath = js;
+        } else {
+          // Fallback to direct bin tools if present
+          final ktDirect = p.join(bundledBin, 'keytool.exe');
+          final jsDirect = p.join(bundledBin, 'jarsigner.exe');
+          if (File(ktDirect).existsSync()) keytoolPath = ktDirect;
+          if (File(jsDirect).existsSync()) jarsignerPath = jsDirect;
+        }
       }
     } catch (e) {
       debugPrint('Error detecting bundled tools: $e');
@@ -89,12 +108,21 @@ class SDKService {
   }) async {
     log('🚀 Executing: ${p.basename(exec)} ${args.join(' ')}');
     try {
+      List<String> finalArgs = args;
+      if (p.basename(exec).toLowerCase() == 'adb.exe' &&
+          currentSerial != null) {
+        // Check if -s is already present
+        if (!args.contains('-s')) {
+          finalArgs = ['-s', currentSerial!, ...args];
+        }
+      }
+
       bool useShell =
           exec.toLowerCase().endsWith('.bat') ||
           exec.toLowerCase().endsWith('.cmd');
       final proc = await Process.start(
         exec,
-        args,
+        finalArgs,
         workingDirectory: workDir,
         runInShell: useShell,
       );
@@ -161,15 +189,41 @@ class SDKService {
 
     List<String> suspectedRoots = [
       p.join(Platform.environment['LOCALAPPDATA'] ?? '', 'Android', 'Sdk'),
+      p.join(
+        Platform.environment['USERPROFILE'] ?? '',
+        'AppData',
+        'Local',
+        'Android',
+        'Sdk',
+      ),
       r'C:\Android\Sdk',
+      r'D:\Android\Sdk',
+      r'C:\Program Files (x86)\Android\android-sdk',
       Platform.environment['ANDROID_HOME'] ?? '',
       Platform.environment['ANDROID_SDK_ROOT'] ?? '',
     ];
 
+    // Check for common Android Studio install paths to find bundled SDKs
+    List<String> studioPaths = [
+      r'C:\Program Files\Android\Android Studio',
+      r'C:\Program Files (x86)\Android\Android Studio',
+    ];
+
+    for (var studio in studioPaths) {
+      if (Directory(studio).existsSync()) {
+        final jbr = p.join(studio, 'jbr', 'bin');
+        if (File(p.join(jbr, 'jarsigner.exe')).existsSync()) {
+          keytoolPath = p.join(jbr, 'keytool.exe');
+          jarsignerPath = p.join(jbr, 'jarsigner.exe');
+        }
+      }
+    }
+
     for (var root in suspectedRoots) {
       if (root.isNotEmpty && Directory(root).existsSync()) {
         autoDetectSDK(root);
-        break;
+        // If we found adb, don't break yet, keep looking for better tools in other roots?
+        // Actually, let's keep the first valid one but try to find Build Tools.
       }
     }
 
@@ -200,7 +254,7 @@ class SDKService {
     }
 
     // 3. Try common Program Files paths if still not found or using default
-    if (!File(jarsignerPath).existsSync()) {
+    if (!File(jarsignerPath).existsSync() || jarsignerPath.contains('jdk-17')) {
       final javaRoot = Directory(r'C:\Program Files\Java');
       if (javaRoot.existsSync()) {
         final List<FileSystemEntity> entities = await javaRoot.list().toList();
@@ -230,23 +284,36 @@ class SDKService {
     String errorLoc,
   ) async {
     try {
+      if (!File(adbPath).existsSync()) {
+        adbStatusNotifier.value = disconnectedLoc;
+        connectedDevices.value = [];
+        return disconnectedLoc;
+      }
+
       final res = await Process.run(adbPath, [
         'devices',
       ]).timeout(const Duration(seconds: 3));
       final output = res.stdout.toString();
       final lines = output.split('\n');
-      String newStatus = disconnectedLoc;
 
+      List<String> devices = [];
       for (var line in lines) {
         if (line.contains('\tdevice')) {
           final serial = line.split('\t')[0].trim();
-          currentSerial = serial;
-          newStatus = "$connectedLoc: $serial";
-          break;
+          devices.add(serial);
         }
       }
 
-      if (newStatus == disconnectedLoc) {
+      connectedDevices.value = devices;
+
+      String newStatus = disconnectedLoc;
+      if (devices.isNotEmpty) {
+        // If currentSerial is not in the list, or null, pick the first one
+        if (currentSerial == null || !devices.contains(currentSerial)) {
+          currentSerial = devices.first;
+        }
+        newStatus = "$connectedLoc: $currentSerial";
+      } else {
         currentSerial = null;
       }
 
@@ -254,20 +321,40 @@ class SDKService {
       refreshTick.value++; // Force notification even if status string is same
       return newStatus;
     } catch (e) {
-      adbStatusNotifier.value = errorLoc;
+      adbStatusNotifier.value = disconnectedLoc;
+      connectedDevices.value = [];
       refreshTick.value++;
-      return errorLoc;
+      return disconnectedLoc;
     }
+  }
+
+  void selectDevice(String serial) {
+    if (connectedDevices.value.contains(serial)) {
+      currentSerial = serial;
+      // We don't have the loc here, so we just update the serial and force a refresh
+      // The DashboardPage will call getAdbDevices again or we can update the status manually if we had the locs
+      // For now, let's just trigger a refresh tick.
+      refreshTick.value++;
+    }
+  }
+
+  List<String> adbArgs(List<String> args) {
+    if (currentSerial != null) {
+      return ['-s', currentSerial!, ...args];
+    }
+    return args;
+  }
+
+  Future<ProcessResult> runAdb(
+    List<String> args, {
+    bool runInShell = false,
+  }) async {
+    return await Process.run(adbPath, adbArgs(args), runInShell: runInShell);
   }
 
   Future<List<String>> getPackages() async {
     try {
-      final res = await Process.run(adbPath, [
-        'shell',
-        'pm',
-        'list',
-        'packages',
-      ]);
+      final res = await runAdb(['shell', 'pm', 'list', 'packages']);
       if (res.exitCode == 0) {
         return res.stdout
             .toString()
@@ -280,11 +367,68 @@ class SDKService {
     return [];
   }
 
+  /// Returns a map of package names to app labels using a fast dumpsys trick
+  Future<Map<String, String>> getPackagesWithNames() async {
+    Map<String, String> results = {};
+    try {
+      // This command extracts both the package block and the application-label in one pass
+      // We also look for other potential label indicators
+      final res = await runAdb([
+        'shell',
+        'dumpsys package | grep -E "Package \\[[^]]+\\]|application-label:|label:|Label:"',
+      ], runInShell: true);
+
+      if (res.exitCode == 0) {
+        final lines = res.stdout.toString().split('\n');
+        String? currentPkg;
+
+        final pkgRegex = RegExp(r"Package \[([^\]]+)\]");
+        // Matches application-label:'Name' or label=Name or Label: Name
+        final labelRegex = RegExp(
+          r"(?:application-label|label|Label)[:=]\s*'?([^']*)'?",
+        );
+
+        for (var line in lines) {
+          final pkgMatch = pkgRegex.firstMatch(line);
+          if (pkgMatch != null) {
+            currentPkg = pkgMatch.group(1);
+            continue;
+          }
+
+          if (currentPkg != null) {
+            final labelMatch = labelRegex.firstMatch(line);
+            if (labelMatch != null) {
+              final label = labelMatch.group(1)!.trim();
+              if (label.isNotEmpty && label != "null") {
+                results[currentPkg] = label;
+                currentPkg = null; // Found it, move to next package
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      log("Error getting package names: $e");
+    }
+
+    // Fallback: merge with pm list packages to ensure we have all packages (even without labels)
+    try {
+      final all = await getPackages();
+      for (var p in all) {
+        if (!results.containsKey(p)) {
+          results[p] = p; // Fallback to package name if label not found
+        }
+      }
+    } catch (_) {}
+
+    return results;
+  }
+
   Future<Process?> startLogcat({
     String? packageName,
     String level = "V",
   }) async {
-    List<String> args = ['logcat', '-v', 'threadtime', '*:$level'];
+    List<String> args = adbArgs(['logcat', '-v', 'threadtime', '*:$level']);
 
     // El filtrado por PID nativo fue removido porque tiene dos fallas fatales:
     // 1. Falla si la app no ha sido abierta aún.

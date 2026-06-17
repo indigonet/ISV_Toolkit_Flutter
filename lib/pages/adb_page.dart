@@ -545,7 +545,7 @@ class _AdbPageState extends State<AdbPage> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: isD ? const Color(0xFF1E1E1E) : Colors.white,
+            color: isD ? const Color(0xFF1E293B) : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: isD
@@ -669,7 +669,7 @@ class _AdbPageState extends State<AdbPage> {
                                   elevation: 4,
                                   borderRadius: BorderRadius.circular(8),
                                   color: isD
-                                      ? const Color(0xFF1E1E1E)
+                                      ? const Color(0xFF1E293B)
                                       : Colors.white,
                                   child: Container(
                                     width: constraints.maxWidth,
@@ -851,7 +851,7 @@ class _AdbPageState extends State<AdbPage> {
                           color: isD ? Colors.white : Colors.black87,
                         ),
                         dropdownColor: isD
-                            ? const Color(0xFF1E1E1E)
+                            ? const Color(0xFF1E293B)
                             : Colors.white,
                         items: const [
                           DropdownMenuItem(value: "V", child: Text('VERBOSE')),
@@ -972,9 +972,9 @@ class _AdbPageState extends State<AdbPage> {
           child: Container(
             width: double.infinity,
             decoration: BoxDecoration(
-              color: const Color(0xFF0D0D0D),
+              color: isD ? const Color(0xFF020617) : const Color(0xFF0F172A),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.white10),
+              border: Border.all(color: isD ? Colors.white10 : Colors.blueGrey.withValues(alpha: 0.15)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
@@ -1316,7 +1316,7 @@ class _StatsDialogState extends State<_StatsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: widget.isDark ? const Color(0xFF1A1A1A) : Colors.white,
+      backgroundColor: widget.isDark ? const Color(0xFF1E293B) : Colors.white,
       title: Row(
         children: [
           const Icon(Icons.analytics, color: Colors.blueAccent),

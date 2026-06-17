@@ -1,6 +1,6 @@
 ; Script de Inno Setup para ISV Toolkit
 #define MyAppName "ISV Toolkit"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "Matias iOne"
 #define MyAppURL "https://github.com/matias-ione/isv-toolkit"
 #define MyAppExeName "isv_toolkit.exe"

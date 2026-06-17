@@ -27,7 +27,9 @@ class _SidebarItemState extends State<SidebarItem> {
   Widget build(BuildContext context) {
     final primaryColor = widget.isDark ? Colors.cyanAccent : Colors.blueAccent;
     final baseColor = widget.isDark ? Colors.white24 : Colors.black26;
-    final hoverColor = widget.isDark ? Colors.white.withValues(alpha: 0.6) : Colors.black.withValues(alpha: 0.6);
+    final hoverColor = widget.isDark
+        ? Colors.white.withValues(alpha: 0.6)
+        : Colors.black.withValues(alpha: 0.6);
 
     return InkWell(
       onTap: widget.onTap,
@@ -43,23 +45,24 @@ class _SidebarItemState extends State<SidebarItem> {
           color: widget.isSelected
               ? primaryColor.withValues(alpha: 0.08)
               : (_isHovered
-                  ? primaryColor.withValues(alpha: 0.02)
-                  : Colors.transparent),
+                    ? primaryColor.withValues(alpha: 0.02)
+                    : Colors.transparent),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-              color: widget.isSelected
-                  ? primaryColor.withValues(alpha: 0.15)
-                  : (_isHovered
+            color: widget.isSelected
+                ? primaryColor.withValues(alpha: 0.15)
+                : (_isHovered
                       ? primaryColor.withValues(alpha: 0.05)
-                      : Colors.transparent)),
+                      : Colors.transparent),
+          ),
         ),
         child: Row(
           children: [
             Icon(
               widget.icon,
               size: 18,
-              color: widget.isSelected 
-                  ? primaryColor 
+              color: widget.isSelected
+                  ? primaryColor
                   : (_isHovered ? hoverColor : baseColor),
             ),
             const SizedBox(width: 12),
@@ -67,11 +70,12 @@ class _SidebarItemState extends State<SidebarItem> {
               widget.label,
               style: TextStyle(
                 fontSize: 13,
-                color: widget.isSelected 
-                    ? primaryColor 
+                color: widget.isSelected
+                    ? primaryColor
                     : (_isHovered ? hoverColor : baseColor),
-                fontWeight:
-                    widget.isSelected ? FontWeight.bold : FontWeight.normal,
+                fontWeight: widget.isSelected
+                    ? FontWeight.bold
+                    : FontWeight.normal,
               ),
             ),
           ],

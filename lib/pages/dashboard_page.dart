@@ -10,7 +10,10 @@ import '../widgets/adb_badge.dart';
 import 'analysis_page.dart';
 import 'signing_page.dart';
 import 'adb_page.dart';
+import 'sdk_simulator_page.dart';
+import 'simplified_protocol_page.dart';
 import 'settings_page.dart';
+import 'c2c_a2a_page.dart';
 
 class DashboardPage extends StatefulWidget {
   final String currentLang;
@@ -35,9 +38,7 @@ class _DashboardPageState extends State<DashboardPage>
   late TabController _tabController;
   int _selectedIndex = 0;
   final SDKService _sdk = SDKService();
-  final ValueNotifier<String> _adbStatus = ValueNotifier<String>(
-    "Disconnected",
-  );
+  late final ValueNotifier<String> _adbStatus;
   Timer? _adbTimer;
 
   AppLocale get _loc => AppLocale.languages[widget.currentLang]!;
@@ -45,7 +46,8 @@ class _DashboardPageState extends State<DashboardPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _adbStatus = ValueNotifier<String>(_loc.loading);
+    _tabController = TabController(length: 7, vsync: this);
     _refreshAdb();
     _adbTimer = Timer.periodic(
       const Duration(seconds: 5),
@@ -115,7 +117,7 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _buildBackground(bool isDark) {
     return Container(
       decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF0F0F0F) : const Color(0xFFF5F7FA),
+        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF5F7FA),
       ),
     );
   }
@@ -141,6 +143,19 @@ class _DashboardPageState extends State<DashboardPage>
               color: isDark ? Colors.white : Colors.black87,
             ),
           ),
+          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'v1.0.4',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w400,
+                letterSpacing: 0.3,
+                color: isDark ? Colors.white30 : Colors.grey,
+              ),
+            ),
+          ),
           const Spacer(),
           IconButton(
             onPressed: _showToolsConfigDialog,
@@ -155,11 +170,24 @@ class _DashboardPageState extends State<DashboardPage>
           ValueListenableBuilder<String>(
             valueListenable: _adbStatus,
             builder: (context, status, _) {
-              return AdbBadge(
-                status: status,
-                isDark: isDark,
-                loc: _loc,
-                onRefresh: _refreshAdb,
+              return ValueListenableBuilder<List<String>>(
+                valueListenable: _sdk.connectedDevices,
+                builder: (context, devices, _) {
+                  return AdbBadge(
+                    status: status,
+                    isDark: isDark,
+                    loc: _loc,
+                    onRefresh: _refreshAdb,
+                    devices: devices,
+                    currentSerial: _sdk.currentSerial,
+                    onDeviceSelected: (serial) {
+                      setState(() {
+                        _sdk.selectDevice(serial);
+                        _refreshAdb();
+                      });
+                    },
+                  );
+                },
               );
             },
           ),
@@ -178,7 +206,7 @@ class _DashboardPageState extends State<DashboardPage>
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            backgroundColor: isDark ? const Color(0xFF1A1A1A) : Colors.white,
+            backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
             title: Row(
               children: [
                 Text(_loc.configSdk),
@@ -218,7 +246,9 @@ class _DashboardPageState extends State<DashboardPage>
                 const SizedBox(width: 8),
                 ElevatedButton.icon(
                   onPressed: () async {
-                    try { await windowManager.focus(); } catch(_) {}
+                    try {
+                      await windowManager.focus();
+                    } catch (_) {}
                     String? path = await FilePicker.platform.getDirectoryPath();
 
                     if (path != null) {
@@ -312,7 +342,9 @@ class _DashboardPageState extends State<DashboardPage>
           suffixIcon: IconButton(
             icon: const Icon(Icons.folder_open),
             onPressed: () async {
-              try { await windowManager.focus(); } catch(_) {}
+              try {
+                await windowManager.focus();
+              } catch (_) {}
               FilePickerResult? r = await FilePicker.platform.pickFiles();
 
               if (r != null) {
@@ -354,12 +386,33 @@ class _DashboardPageState extends State<DashboardPage>
             onTap: () => _onTabSelected(2),
             isDark: isDark,
           ),
+          SidebarItem(
+            icon: Icons.point_of_sale,
+            label: _loc.t('Simulador SDK'),
+            isSelected: _selectedIndex == 3,
+            onTap: () => _onTabSelected(3),
+            isDark: isDark,
+          ),
+          SidebarItem(
+            icon: Icons.point_of_sale,
+            label: _loc.t('Simplificado'),
+            isSelected: _selectedIndex == 4,
+            onTap: () => _onTabSelected(4),
+            isDark: isDark,
+          ),
+          SidebarItem(
+            icon: Icons.swap_horizontal_circle_outlined,
+            label: _loc.t('C2C / A2A'),
+            isSelected: _selectedIndex == 5,
+            onTap: () => _onTabSelected(5),
+            isDark: isDark,
+          ),
           const Spacer(),
           SidebarItem(
             icon: Icons.settings,
             label: _loc.settings,
-            isSelected: _selectedIndex == 3,
-            onTap: () => _onTabSelected(3),
+            isSelected: _selectedIndex == 6,
+            onTap: () => _onTabSelected(6),
             isDark: isDark,
           ),
         ],
@@ -389,6 +442,9 @@ class _DashboardPageState extends State<DashboardPage>
                 sdk: _sdk,
                 adbStatus: status,
               ),
+              SDKSimulatorPage(loc: _loc, isDarkMode: widget.isDarkMode),
+              SimplifiedProtocolPage(loc: _loc, isDarkMode: widget.isDarkMode),
+              C2CA2APage(loc: _loc, isDarkMode: widget.isDarkMode),
               SettingsPage(
                 loc: _loc,
                 isDarkMode: widget.isDarkMode,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../core/localization.dart';
 import '../services/sdk_service.dart';
+import '../main.dart' show appVersion;
 
 class SettingsPage extends StatelessWidget {
   final AppLocale loc;
@@ -23,10 +24,9 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDark = isDarkMode;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
           Text(
             loc.settings,
             style: TextStyle(
@@ -150,7 +150,7 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ]),
-          const SizedBox(height: 40),
+          const Spacer(),
           const Divider(),
           const SizedBox(height: 20),
           Text(
@@ -160,8 +160,7 @@ class SettingsPage extends StatelessWidget {
           const SizedBox(height: 16),
           _buildAboutContent(),
         ],
-      ),
-    );
+      );
   }
 
   Widget _buildSettingsSection(String title, List<Widget> children) {
@@ -193,7 +192,7 @@ class SettingsPage extends StatelessWidget {
           'ISV TOOLKIT',
           style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
-        Text('${loc.version} 1.0.1'),
+        Text('${loc.version} $appVersion'),
         const SizedBox(height: 8),
         Text(loc.developedBy),
         const SizedBox(height: 16),

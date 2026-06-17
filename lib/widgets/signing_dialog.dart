@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/localization.dart';
+import '../core/preferences_service.dart';
 import '../services/sdk_service.dart';
 
 class SigningDialog extends StatefulWidget {
@@ -73,6 +74,9 @@ class _SigningDialogState extends State<SigningDialog>
   bool _obscureConfirmPass = true;
   String _statusMessage = "";
 
+  PreferencesService? _prefsService;
+  String? _outputDirectory;
+
   @override
   void initState() {
     super.initState();
@@ -87,6 +91,31 @@ class _SigningDialogState extends State<SigningDialog>
       }
     });
     _apkPath = widget.initialApkPath;
+    _loadPreferences();
+  }
+
+  void _loadPreferences() async {
+    _prefsService = await PreferencesService.load();
+    if (mounted) {
+      setState(() {
+        _outputDirectory = _prefsService?.outputDir;
+      });
+    }
+  }
+
+  void _pickOutputDirectory() async {
+    try {
+      await windowManager.focus();
+    } catch (_) {}
+    String? path = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: widget.loc.t('Seleccionar carpeta de destino para firmas'),
+    );
+    if (path != null) {
+      setState(() {
+        _outputDirectory = path;
+      });
+      await _prefsService?.setOutputDir(path);
+    }
   }
 
   @override
@@ -106,9 +135,10 @@ class _SigningDialogState extends State<SigningDialog>
   }
 
   void _pickApk() async {
-    try { await windowManager.focus(); } catch(_) {}
+    try {
+      await windowManager.focus();
+    } catch (_) {}
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-
       type: FileType.custom,
       allowedExtensions: ['apk'],
     );
@@ -118,14 +148,18 @@ class _SigningDialogState extends State<SigningDialog>
   }
 
   void _pickJks() async {
-    try { await windowManager.focus(); } catch(_) {}
+    try {
+      await windowManager.focus();
+    } catch (_) {}
     FilePickerResult? result = await FilePicker.platform.pickFiles(
-
       type: FileType.custom,
       allowedExtensions: ['jks', 'keystore'],
     );
     if (result != null) {
-      setState(() => _jksPath = result.files.single.path);
+      setState(() {
+        _jksPath = result.files.single.path;
+        _aliasController.clear();
+      });
     }
   }
 
@@ -156,7 +190,9 @@ class _SigningDialogState extends State<SigningDialog>
       return;
     }
 
-    try { await windowManager.focus(); } catch(_) {}
+    try {
+      await windowManager.focus();
+    } catch (_) {}
     String? path = await FilePicker.platform.getDirectoryPath(
       dialogTitle: 'Seleccionar carpeta de destino',
     );
@@ -256,12 +292,16 @@ class _SigningDialogState extends State<SigningDialog>
       return;
     }
 
-    try { await windowManager.focus(); } catch(_) {}
-    String? outputDir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Seleccionar carpeta para guardar APK',
-    );
-
-    if (outputDir == null) {
+    if (_outputDirectory == null || _outputDirectory!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.loc.t(
+              'Por favor, selecciona una carpeta de destino para las firmas.',
+            ),
+          ),
+        ),
+      );
       return;
     }
 
@@ -289,7 +329,44 @@ class _SigningDialogState extends State<SigningDialog>
     }
 
     String baseName = p.basenameWithoutExtension(_apkPath!);
-    String outApk = p.join(outputDir, '${baseName}_signed.apk');
+
+    // Generar nombre de carpeta con nombre del apk y fecha/hora concatenada
+    final now = DateTime.now();
+    final year = now.year.toString();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final minute = now.minute.toString().padLeft(2, '0');
+    final second = now.second.toString().padLeft(2, '0');
+    final dateStr = '$year$month${day}_$hour$minute$second';
+
+    final String subfolderName = '${baseName}_$dateStr';
+    final String finalOutputDir = p.join(_outputDirectory!, subfolderName);
+
+    try {
+      final Directory finalDirObj = Directory(finalOutputDir);
+      if (!finalDirObj.existsSync()) {
+        finalDirObj.createSync(recursive: true);
+      }
+    } catch (e) {
+      widget.sdk.log('Error creando subdirectorio de firma: $e');
+      setState(() {
+        _isProcessing = false;
+        _statusMessage = "Error al crear carpeta";
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              widget.loc.t('Error al crear la carpeta de destino: $e'),
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    String outApk = p.join(finalOutputDir, '${baseName}_signed.apk');
 
     try {
       String apksignerJar = '';
@@ -347,7 +424,7 @@ class _SigningDialogState extends State<SigningDialog>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('${widget.loc.apkSaved} $outApk'),
+              content: Text('${widget.loc.apkSaved} $finalOutputDir'),
               backgroundColor: Colors.green,
             ),
           );
@@ -562,12 +639,165 @@ class _SigningDialogState extends State<SigningDialog>
     if (widget.isDialog) {
       return Dialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        backgroundColor: isD ? const Color(0xFF1E1E1E) : Colors.white,
+        backgroundColor: isD ? const Color(0xFF1E293B) : Colors.white,
         child: content,
       );
     }
 
     return content;
+  }
+
+  Widget _buildApkSelector(bool isD) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isD ? Colors.white.withValues(alpha: 0.03) : Colors.blueGrey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isD ? Colors.white10 : Colors.blueGrey.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.layers_outlined,
+              size: 20,
+              color: isD ? Colors.cyanAccent : Colors.blueAccent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.loc.apkSelectedTitle,
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  _apkPath != null
+                      ? p.basename(_apkPath!)
+                      : widget.loc.selectApkHint,
+                  style: TextStyle(
+                    color: isD ? Colors.white : Colors.blueGrey[900],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _pickApk,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+            child: Text(
+              widget.loc.browse,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDirectorySelector(bool isD) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isD ? Colors.white.withValues(alpha: 0.03) : Colors.blueGrey[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isD ? Colors.white10 : Colors.blueGrey.withValues(alpha: 0.1),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.folder_copy_outlined,
+              size: 20,
+              color: isD ? Colors.cyanAccent : Colors.blueAccent,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.loc.t('Carpeta de Destino de Firmas'),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  _outputDirectory != null && _outputDirectory!.isNotEmpty
+                      ? _outputDirectory!
+                      : widget.loc.t(
+                          'Seleccionar ruta de destino permanente...',
+                        ),
+                  style: TextStyle(
+                    color:
+                        _outputDirectory != null && _outputDirectory!.isNotEmpty
+                        ? (isD ? Colors.white : Colors.blueGrey[900])
+                        : Colors.grey,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _pickOutputDirectory,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blueAccent,
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
+            child: Text(
+              widget.loc.browse,
+              style: const TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildSignTab(bool isD) {
@@ -578,81 +808,20 @@ class _SigningDialogState extends State<SigningDialog>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isD
-                    ? Colors.white.withValues(alpha: 0.03)
-                    : Colors.blueGrey[50],
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isD
-                      ? Colors.white10
-                      : Colors.blueGrey.withValues(alpha: 0.1),
-                ),
-              ),
-              child: Row(
+            if (!widget.isDialog) ...[
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.blueAccent.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.layers_outlined,
-                      size: 20,
-                      color: isD ? Colors.cyanAccent : Colors.blueAccent,
-                    ),
-                  ),
+                  Expanded(child: _buildApkSelector(isD)),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.loc.apkSelectedTitle,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.grey,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        Text(
-                          _apkPath != null
-                              ? p.basename(_apkPath!)
-                              : widget.loc.selectApkHint,
-                          style: TextStyle(
-                            color: isD ? Colors.white : Colors.blueGrey[900],
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  ElevatedButton(
-                    onPressed: _pickApk,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 8,
-                      ),
-                    ),
-                    child: Text(
-                      widget.loc.browse,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
+                  Expanded(child: _buildDirectorySelector(isD)),
                 ],
               ),
-            ),
+            ] else ...[
+              _buildApkSelector(isD),
+              const SizedBox(height: 12),
+              _buildDirectorySelector(isD),
+            ],
             const SizedBox(height: 20),
             Row(
               children: [
@@ -737,19 +906,6 @@ class _SigningDialogState extends State<SigningDialog>
                 const SizedBox(width: 16),
                 Expanded(
                   child: _buildFieldLayout(
-                    widget.loc.aliasLabel,
-                    _aliasController,
-                    icon: Icons.vpn_key_outlined,
-                    hint: 'Auto-detectar (ej: key0)',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildFieldLayout(
                     widget.loc.passwordLabel,
                     _createPassController,
                     isPassword: true,
@@ -760,8 +916,6 @@ class _SigningDialogState extends State<SigningDialog>
                         setState(() => _obscureSignPass = !_obscureSignPass),
                   ),
                 ),
-                const SizedBox(width: 16),
-                const Expanded(child: SizedBox()), // Spacer
               ],
             ),
           ],
